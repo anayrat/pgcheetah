@@ -14,7 +14,7 @@ import (
 type Worker struct {
 	ConnStr      *string
 	Dataset      map[int][]string
-	Delayxact    *int
+	Delayxact    *float64
 	Done         chan bool
 	Num          int
 	QueriesCount *int64

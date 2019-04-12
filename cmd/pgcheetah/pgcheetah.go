@@ -29,6 +29,7 @@ var debug = flag.Bool("debug", false, "debug mode")
 var delaystart = flag.Int("delaystart", 0, "spread client start among seconds")
 var delayxact = flag.Float64("delayxact", 5, "millisecond between each transaction")
 var duration = flag.Int("duration", 0, "Test duration")
+var interval = flag.Int("interval", 1, "Interval stats report")
 var queryfile = flag.String("queryfile", "", "file containing queries to play")
 var thinktimemax = flag.Int("thinktimemax", 5, "millisecond thinktime")
 var thinktimemin = flag.Int("thinktimemin", 5, "millisecond thinktime")
@@ -52,16 +53,17 @@ func main() {
 	var start time.Time
 
 	flag.Parse()
+
 	think.Min = *thinktimemin
 	think.Max = *thinktimemax
 
-	// Start profiling if enabled
-	pproofing()
-
-	// Start duration timer
+	// Initiate timer, will be reseted later
 	if *duration != 0 {
 		timer = time.NewTimer(time.Duration(*duration) * time.Second)
 	}
+
+	// Start profiling if enabled
+	pproofing()
 
 	// capture ctrl+c or end of timer to stop workers and display wait_event counters
 	c := make(chan os.Signal, 1)
@@ -105,17 +107,18 @@ func main() {
 		time.Sleep(time.Duration(*delaystart) * time.Second)
 		var prevXactCount int64 = 0
 		var prevQueriesCount int64 = 0
+		wg.Add(1)
 		for i := 0; true; i++ {
 
-			if i%10 == 0 {
-				log.Printf("TPS: %d QPS: %d Xact: %d Queries: %d Delay: %.1fms\n", (xactCount-prevXactCount)*10, (queriesCount-prevQueriesCount)*10, xactCount, queriesCount, *delayxact)
+			if i%(*interval*10) == 0 {
+				log.Printf("TPS: %d QPS: %d Xact: %d Queries: %d Delay: %.1fms Remaining: %.fs\n", (xactCount-prevXactCount)*10, (queriesCount-prevQueriesCount)*10, xactCount, queriesCount, *delayxact, float64(*duration)-time.Since(start).Seconds())
 			}
 			if *tps != 0 {
-				if (xactCount-prevXactCount)*10 > int64(*tps*(1+0.1)) {
+				if (xactCount-prevXactCount)*10 > int64(*tps*(1+0.01)) {
 					//log.Printf("> TPS: %d	- tps diff %d	Delay: %.2fms\n", (xactCount-prevXactCount)*10, int64(*tps*(1+0.1)), *delayxact)
 					*delayxact += 0.1
 
-				} else if *delayxact > 0.0 && (xactCount-prevXactCount)*10 < int64(*tps*(1-0.1)) {
+				} else if *delayxact > 0.0 && (xactCount-prevXactCount)*10 < int64(*tps*(1-0.01)) {
 					//log.Printf("< TPS: %d	- tps diff %d	Delay: %.2fms\n", (xactCount-prevXactCount)*10, int64(*tps*(1-0.1)), *delayxact)
 					*delayxact -= 0.1
 				}
@@ -128,7 +131,8 @@ func main() {
 
 				t := time.Now()
 				elapsed := t.Sub(start)
-				log.Printf("End test - Elapsed %s - Average TPS: %.f - Average QPS: %.f\n", elapsed.String(), float64(xactCount)/elapsed.Seconds(), float64(queriesCount)/elapsed.Seconds())
+				log.Printf("End test - Clients: %d - Elapsed: %s - Average TPS: %.f - Average QPS: %.f\n", *clients, elapsed.String(), float64(xactCount)/elapsed.Seconds(), float64(queriesCount)/elapsed.Seconds())
+				wg.Done()
 				return
 			default:
 
@@ -137,8 +141,6 @@ func main() {
 		}
 
 	}()
-
-	go pgcheetah.WaitEventCollector(wait_event, connStr)
 
 	worker.ConnStr = connStr
 	worker.Dataset = data
@@ -155,11 +157,19 @@ func main() {
 		go pgcheetah.WorkerPGv2(worker)
 	}
 	log.Println("All workers launched")
-	// Workers had already processed transactions before all worker are started.
-	//Reset counter in order to have accurate stats at the end of the test.
+
+	// Workers had already processed transactions before all worker have been started.
+	// Reset counter in order to have accurate stats at the end of the test.
 	atomic.StoreInt64(&queriesCount, 0)
 	atomic.StoreInt64(&xactCount, 0)
 	start = time.Now()
+
+	// Start timer
+	if *duration != 0 {
+		timer.Reset(time.Duration(*duration) * time.Second)
+	}
+
+	go pgcheetah.WaitEventCollector(wait_event, connStr)
 
 	wg.Wait()
 }
