@@ -48,8 +48,8 @@ func main() {
 	wait_event := make(map[string]int)
 	done := make(chan bool)
 	var timer *time.Timer
-	think := pgcheetah.Thinktime{"uniform", 0, 5}
-	s := pgcheetah.State{"init", 0, false}
+	think := pgcheetah.Thinktime{Distribution: "uniform", Min: 0, Max: 5}
+	s := pgcheetah.State{Statedesc: "init", Xact: 0, Xactinprogress: false}
 	var start time.Time
 
 	flag.Parse()
