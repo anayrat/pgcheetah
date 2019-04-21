@@ -37,7 +37,7 @@ func (s *State) NewState(action string) int {
 			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			log.Fatalf("Unkown action")
+			log.Fatalf("Unknown action")
 			s.Statedesc = "error"
 		}
 	case "query":
@@ -56,7 +56,7 @@ func (s *State) NewState(action string) int {
 			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			log.Fatalf("Unkown action")
+			log.Fatalf("Unknown action")
 			s.Statedesc = "error"
 		}
 	case "multi line query":
@@ -76,7 +76,7 @@ func (s *State) NewState(action string) int {
 			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			log.Fatalf("Unkown action")
+			log.Fatalf("Unknown action")
 			s.Statedesc = "error"
 		}
 	case "new Xact":
@@ -92,7 +92,7 @@ func (s *State) NewState(action string) int {
 			s.Statedesc = "end Xact"
 			s.Xactinprogress = false
 		default:
-			log.Fatalf("Unkown action")
+			log.Fatalf("Unknown action")
 			s.Statedesc = "error"
 		}
 	case "Xact in progress":
@@ -108,7 +108,7 @@ func (s *State) NewState(action string) int {
 			s.Statedesc = "end Xact"
 			s.Xactinprogress = false
 		default:
-			log.Fatalf("Unkown action")
+			log.Fatalf("Unknown action")
 			s.Statedesc = "error"
 		}
 	case "end Xact":
@@ -126,14 +126,14 @@ func (s *State) NewState(action string) int {
 			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			log.Fatalf("Unkown action")
+			log.Fatalf("Unknown action")
 			s.Statedesc = "error"
 		}
 	case "error":
 		log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
 		s.Statedesc = "error"
 	default:
-		log.Fatalf("Unkown state")
+		log.Fatalf("Unknown state")
 		s.Statedesc = "error"
 	}
 	return s.Xact

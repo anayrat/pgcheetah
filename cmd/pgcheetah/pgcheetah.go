@@ -111,7 +111,8 @@ func main() {
 		for i := 0; true; i++ {
 
 			if i%(*interval*10) == 0 {
-				log.Printf("TPS: %d QPS: %d Xact: %d Queries: %d Delay: %.1fms Remaining: %.fs\n", (xactCount-prevXactCount)*10, (queriesCount-prevQueriesCount)*10, xactCount, queriesCount, *delayxact, float64(*duration)-time.Since(start).Seconds())
+				log.Printf("TPS: %d QPS: %d Xact: %d Queries: %d Delay: %.1fms Remaining: %.fs\n",
+					(xactCount-prevXactCount)*10, (queriesCount-prevQueriesCount)*10, xactCount, queriesCount, *delayxact, float64(*duration)-time.Since(start).Seconds())
 			}
 			if *tps != 0 {
 				if (xactCount-prevXactCount)*10 > int64(*tps*(1+0.01)) {
@@ -131,7 +132,8 @@ func main() {
 
 				t := time.Now()
 				elapsed := t.Sub(start)
-				log.Printf("End test - Clients: %d - Elapsed: %s - Average TPS: %.f - Average QPS: %.f\n", *clients, elapsed.String(), float64(xactCount)/elapsed.Seconds(), float64(queriesCount)/elapsed.Seconds())
+				log.Printf("End test - Clients: %d - Elapsed: %s - Average TPS: %.f - Average QPS: %.f\n",
+					*clients, elapsed.String(), float64(xactCount)/elapsed.Seconds(), float64(queriesCount)/elapsed.Seconds())
 				wg.Done()
 				return
 			default:

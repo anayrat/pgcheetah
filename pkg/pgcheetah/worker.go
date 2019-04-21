@@ -108,7 +108,7 @@ func WaitEventCollector(we map[string]int, connStr *string) {
 
 	var count int
 	var wait_event string
-	cfg, err := pgx.ParseConnectionString(*connStr)
+	cfg, _ := pgx.ParseConnectionString(*connStr)
 	// use simple protocol in order to work with pgbouncer
 	cfg.PreferSimpleProtocol = true
 	db, err := pgx.Connect(cfg)
