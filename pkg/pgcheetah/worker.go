@@ -68,12 +68,15 @@ func WorkerPGv2(w Worker) {
 
 	var randxact, i int
 	cfg, err := pgx.ParseConnectionString(*w.ConnStr)
+	if err != nil {
+		log.Fatal(err)
+	}
 	// use simple protocol in order to work with pgbouncer
 	cfg.PreferSimpleProtocol = true
 	db, err := pgx.Connect(cfg)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(err, " Connection params : ", string(*w.ConnStr))
 	}
 
 	func() {
@@ -87,7 +90,9 @@ func WorkerPGv2(w Worker) {
 
 				atomic.AddInt64(w.QueriesCount, 1)
 
-				time.Sleep(time.Duration(ThinkTime(*w.Think)) * time.Millisecond)
+				if (*w.Think).Min != 0 && (*w.Think).Max != 0 {
+					time.Sleep(time.Duration(ThinkTime(*w.Think)) * time.Millisecond)
+				}
 				select {
 				case <-w.Done:
 					return
@@ -114,7 +119,7 @@ func WaitEventCollector(we map[string]int, connStr *string) {
 	db, err := pgx.Connect(cfg)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(err, " Connection params : ", string(*connStr))
 	}
 
 	// Wait event query for postgres 9.6
