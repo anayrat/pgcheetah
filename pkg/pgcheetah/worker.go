@@ -1,9 +1,7 @@
 package pgcheetah
 
 import (
-	"database/sql"
 	"github.com/jackc/pgx"
-	_ "github.com/lib/pq"
 	"log"
 	"math/rand"
 	"sync"
@@ -11,67 +9,38 @@ import (
 	"time"
 )
 
+// The Worker type contains all informations needed to start a WorkerPG.
+// Earch Worker has access to several shared structures through pointers:
+// - The Dataset containing all transactions
+// - DelayXactUs to limit global throughput
+// - Two global counters for transactions and queries, XactCount and
+// QueriesCount respectively
+// - A Done channel used to stop worker
+// - A WaitGroup to wait all workers ended
 type Worker struct {
 	ConnStr      *string
 	Dataset      map[int][]string
-	Delayxact    *float64
+	DelayXactUs  *int
 	Done         chan bool
-	Num          int
 	QueriesCount *int64
-	Think        *Thinktime
+	Think        *ThinkTime
 	Wg           *sync.WaitGroup
 	XactCount    *int64
 }
 
-//standard driver
+// WorkerPG execute all queries from a randomly
+// chosen transaction.
+// If ThinkTime is specified, add a random delay between Think.Min ms
+// and Think.Max ms after each query.
+// Also add a delay after earch transaction to limit global throughput.
 func WorkerPG(w Worker) {
-	var randxact, i int
 
-	db, err := sql.Open("postgres", *w.ConnStr)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	db.Ping()
-	func() {
-		for {
-			randxact = rand.Intn(len(w.Dataset))
-			for i = 0; i < len(w.Dataset[randxact]); i++ {
-				_, err = db.Exec(w.Dataset[randxact][i])
-				//if err != nil {
-				//	log.Fatal(err)
-				//}
-
-				atomic.AddInt64(w.QueriesCount, 1)
-
-				time.Sleep(time.Duration(ThinkTime(*w.Think)) * time.Millisecond)
-
-			}
-			time.Sleep(time.Duration(*w.Delayxact) * time.Millisecond)
-			atomic.AddInt64(w.XactCount, 1)
-			select {
-			case <-w.Done:
-				return
-			default:
-
-			}
-
-		}
-	}()
-	db.Close()
-	w.Wg.Done()
-
-}
-
-//pgx driver
-func WorkerPGv2(w Worker) {
-
-	var randxact, i int
+	var randXact, i int
 	cfg, err := pgx.ParseConnectionString(*w.ConnStr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	// use simple protocol in order to work with pgbouncer
+	// Use simple protocol in order to work with pgbouncer
 	cfg.PreferSimpleProtocol = true
 	db, err := pgx.Connect(cfg)
 
@@ -81,17 +50,20 @@ func WorkerPGv2(w Worker) {
 
 	func() {
 		for {
-			randxact = rand.Intn(len(w.Dataset))
-			for i = 0; i < len(w.Dataset[randxact]); i++ {
-				_, err = db.Exec(w.Dataset[randxact][i])
+			randXact = rand.Intn(len(w.Dataset))
+			for i = 0; i < len(w.Dataset[randXact]); i++ {
+				_, err = db.Exec(w.Dataset[randXact][i])
+
+				// Ignore SQL error
 				//if err != nil {
 				//	log.Fatal(err)
 				//}
 
 				atomic.AddInt64(w.QueriesCount, 1)
 
+				// Avoid ThinkTime calculaton when not necessary
 				if (*w.Think).Min != 0 && (*w.Think).Max != 0 {
-					time.Sleep(time.Duration(ThinkTime(*w.Think)) * time.Millisecond)
+					time.Sleep(time.Duration(ThinkTimer(*w.Think)) * time.Millisecond)
 				}
 				select {
 				case <-w.Done:
@@ -101,7 +73,7 @@ func WorkerPGv2(w Worker) {
 				}
 
 			}
-			time.Sleep(time.Duration(*w.Delayxact) * time.Millisecond)
+			time.Sleep(time.Duration(*w.DelayXactUs) * time.Microsecond)
 			atomic.AddInt64(w.XactCount, 1)
 		}
 	}()
@@ -109,14 +81,18 @@ func WorkerPGv2(w Worker) {
 	w.Wg.Done()
 
 }
+
+// WaitEventCollector collects postgres wait event every 500ms
+// All wait events are stored in a map.
 func WaitEventCollector(we map[string]int, connStr *string) {
 
 	var count int
-	var wait_event string
+	var waitEvent string
 	cfg, _ := pgx.ParseConnectionString(*connStr)
 	// use simple protocol in order to work with pgbouncer
 	cfg.PreferSimpleProtocol = true
 	db, err := pgx.Connect(cfg)
+	defer db.Close()
 
 	if err != nil {
 		log.Fatal(err, " Connection params : ", string(*connStr))
@@ -141,9 +117,9 @@ func WaitEventCollector(we map[string]int, connStr *string) {
 			log.Fatal(err)
 		}
 		for row.Next() {
-			err = row.Scan(&wait_event, &count)
+			err = row.Scan(&waitEvent, &count)
 
-			we[wait_event] += count
+			we[waitEvent] += count
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -152,6 +128,5 @@ func WaitEventCollector(we map[string]int, connStr *string) {
 		time.Sleep(500 * time.Millisecond)
 
 	}
-	db.Close()
 
 }

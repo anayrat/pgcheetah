@@ -9,25 +9,30 @@ import (
 	"strings"
 )
 
+// State structure is used for the state machine. Statedesc is the current state.
+// Xact count transactions. XactInProgress is used in the state machine to identify
+// transactions.
 type State struct {
 	Statedesc      string
 	Xact           int
-	Xactinprogress bool
+	XactInProgress bool
 }
 
-type Txtlinetyp struct {
+type txtLineTyp struct {
 	strings.Builder
 }
 
-// state machine to identify new transactions
-func (s *State) NewState(action string) int {
+// newState function is a state machine used to identify new transactions or
+// queries (when there are multi line string). It is determined according to
+// previous states.
+func (s *State) newState(action string) int {
 	switch s.Statedesc {
 	case "init":
 		switch action {
 		case "Begin":
 			s.Statedesc = "new Xact"
 			s.Xact++
-			s.Xactinprogress = true
+			s.XactInProgress = true
 		case "Query":
 			s.Statedesc = "query"
 			s.Xact++
@@ -45,7 +50,7 @@ func (s *State) NewState(action string) int {
 		case "Begin":
 			s.Statedesc = "new Xact"
 			s.Xact++
-			s.Xactinprogress = true
+			s.XactInProgress = true
 		case "Query":
 			s.Statedesc = "query"
 			s.Xact++
@@ -65,7 +70,7 @@ func (s *State) NewState(action string) int {
 			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
 			s.Statedesc = "error"
 		case "Query":
-			if s.Xactinprogress {
+			if s.XactInProgress {
 				s.Statedesc = "Xact in progress"
 			} else {
 				s.Statedesc = "query"
@@ -90,7 +95,7 @@ func (s *State) NewState(action string) int {
 			s.Statedesc = "multi line query"
 		case "CommitRollback":
 			s.Statedesc = "end Xact"
-			s.Xactinprogress = false
+			s.XactInProgress = false
 		default:
 			log.Fatalf("Unknown action")
 			s.Statedesc = "error"
@@ -106,7 +111,7 @@ func (s *State) NewState(action string) int {
 			s.Statedesc = "multi line query"
 		case "CommitRollback":
 			s.Statedesc = "end Xact"
-			s.Xactinprogress = false
+			s.XactInProgress = false
 		default:
 			log.Fatalf("Unknown action")
 			s.Statedesc = "error"
@@ -116,7 +121,7 @@ func (s *State) NewState(action string) int {
 		case "Begin":
 			s.Statedesc = "new Xact"
 			s.Xact++
-			s.Xactinprogress = true
+			s.XactInProgress = true
 		case "Query":
 			s.Statedesc = "query"
 			s.Xact++
@@ -139,9 +144,6 @@ func (s *State) NewState(action string) int {
 	return s.Xact
 }
 
-// Method which identify statement type. return statement type and a boolean
-// at false to ignore the line
-
 var (
 	begin, _             = regexp.Compile(`(?i)^ *BEGIN`)
 	commit, _            = regexp.Compile(`(?i)^ *COMMIT`)
@@ -151,7 +153,11 @@ var (
 	blanckLine, _        = regexp.Compile(`^ *$`)
 )
 
-func (t *Txtlinetyp) EvaluateLine() (string, bool) {
+// evaluateLine identify if the input string is a begin, commit or rollback,
+// singleline query or a part of a multiline query.
+// It do not use a real parser, but several regex, it is a naive implementation.
+
+func (t *txtLineTyp) evaluateLine() (string, bool) {
 
 	if begin.MatchString(t.String()) {
 		return "Begin", true
@@ -176,13 +182,16 @@ func (t *Txtlinetyp) EvaluateLine() (string, bool) {
 	return "MultilineQuery", true
 }
 
-func ParseXact(data map[int][]string, queryfile *string, s *State, debug *bool) int {
+// ParseXact read a queryFile line by line and load all transaction in a data map.
+// It returns the number of transactions processed.
+// Note : it can handle very long lines which used to be longer than buffer.
+func ParseXact(data map[int][]string, queryFile *string, s *State, debug *bool) int {
 
-	var txtline Txtlinetyp
-	var prevstate string = ""
+	var txtLine txtLineTyp
+	var prevState string
 	var xact int
 
-	file, err := os.Open(*queryfile)
+	file, err := os.Open(*queryFile)
 	if err != nil {
 		log.Fatalf("failed opening file: %s", err)
 	}
@@ -192,7 +201,7 @@ func ParseXact(data map[int][]string, queryfile *string, s *State, debug *bool) 
 	for {
 		line, isPrefix, err := reader.ReadLine()
 
-		txtline.WriteString(string(line))
+		txtLine.WriteString(string(line))
 
 		// Here is a trick to concatenane line which are too big for the buffer.
 		// We loop and concatenate string util we reach the end of the file line.
@@ -201,20 +210,20 @@ func ParseXact(data map[int][]string, queryfile *string, s *State, debug *bool) 
 			if *debug {
 				log.Println("Query:", string(line))
 			}
-			stmtype, isvalid := txtline.EvaluateLine()
+			stmtype, isvalid := txtLine.evaluateLine()
 			if isvalid {
-				xact = s.NewState(stmtype)
+				xact = s.newState(stmtype)
 
 				// concatenate line when we have multi line query
-				if prevstate == "multi line query" {
-					data[xact][len(data[xact])-1] += " " + txtline.String()
+				if prevState == "multi line query" {
+					data[xact][len(data[xact])-1] += " " + txtLine.String()
 
 				} else {
-					data[xact] = append(data[xact], txtline.String())
+					data[xact] = append(data[xact], txtLine.String())
 				}
-				prevstate = s.Statedesc
+				prevState = s.Statedesc
 			}
-			txtline.Reset()
+			txtLine.Reset()
 		}
 		if err == io.EOF {
 			break
