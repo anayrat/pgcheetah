@@ -62,7 +62,7 @@ func WorkerPG(w Worker) {
 				atomic.AddInt64(w.QueriesCount, 1)
 
 				// Avoid ThinkTime calculaton when not necessary
-				if (*w.Think).Min != 0 && (*w.Think).Max != 0 {
+				if (*w.Think).Max != 0 {
 					time.Sleep(time.Duration(ThinkTimer(*w.Think)) * time.Millisecond)
 				}
 				select {
@@ -92,11 +92,11 @@ func WaitEventCollector(we map[string]int, connStr *string) {
 	// use simple protocol in order to work with pgbouncer
 	cfg.PreferSimpleProtocol = true
 	db, err := pgx.Connect(cfg)
-	defer db.Close()
 
 	if err != nil {
 		log.Fatal(err, " Connection params : ", string(*connStr))
 	}
+	defer db.Close()
 
 	// Wait event query for postgres 9.6
 	query := `SELECT

@@ -2,6 +2,7 @@ package pgcheetah
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -25,7 +26,8 @@ type txtLineTyp struct {
 // newState function is a state machine used to identify new transactions or
 // queries (when there are multi line string). It is determined according to
 // previous states.
-func (s *State) newState(action string) int {
+func (s *State) newState(action string) (int, error) {
+	var err error
 	switch s.Statedesc {
 	case "init":
 		switch action {
@@ -39,10 +41,10 @@ func (s *State) newState(action string) int {
 		case "MultilineQuery":
 			s.Statedesc = "multi line query"
 		case "CommitRollback":
-			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
+			err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			log.Fatalf("Unknown action")
+			err = fmt.Errorf("unknown action ")
 			s.Statedesc = "error"
 		}
 	case "query":
@@ -58,16 +60,16 @@ func (s *State) newState(action string) int {
 			s.Statedesc = "multi line query"
 			s.Xact++
 		case "CommitRollback":
-			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
+			err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			log.Fatalf("Unknown action")
+			err = fmt.Errorf("unknown action ")
 			s.Statedesc = "error"
 		}
 	case "multi line query":
 		switch action {
 		case "Begin":
-			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
+			err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 			s.Statedesc = "error"
 		case "Query":
 			if s.XactInProgress {
@@ -78,16 +80,16 @@ func (s *State) newState(action string) int {
 		case "MultilineQuery":
 			s.Statedesc = "multi line query"
 		case "CommitRollback":
-			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
+			err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			log.Fatalf("Unknown action")
+			err = fmt.Errorf("unknown action ")
 			s.Statedesc = "error"
 		}
 	case "new Xact":
 		switch action {
 		case "Begin":
-			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
+			err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 			s.Statedesc = "error"
 		case "Query":
 			s.Statedesc = "Xact in progress"
@@ -97,13 +99,13 @@ func (s *State) newState(action string) int {
 			s.Statedesc = "end Xact"
 			s.XactInProgress = false
 		default:
-			log.Fatalf("Unknown action")
+			err = fmt.Errorf("unknown action ")
 			s.Statedesc = "error"
 		}
 	case "Xact in progress":
 		switch action {
 		case "Begin":
-			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
+			err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 			s.Statedesc = "error"
 		case "Query":
 			s.Statedesc = "Xact in progress"
@@ -113,7 +115,7 @@ func (s *State) newState(action string) int {
 			s.Statedesc = "end Xact"
 			s.XactInProgress = false
 		default:
-			log.Fatalf("Unknown action")
+			err = fmt.Errorf("unknown action ")
 			s.Statedesc = "error"
 		}
 	case "end Xact":
@@ -128,20 +130,20 @@ func (s *State) newState(action string) int {
 		case "MultilineQuery":
 			s.Statedesc = "multi line query"
 		case "CommitRollback":
-			log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
+			err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			log.Fatalf("Unknown action")
+			err = fmt.Errorf("unknown action ")
 			s.Statedesc = "error"
 		}
 	case "error":
-		log.Fatalf("Action %s bring from state %s to error state", action, s.Statedesc)
+		err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 		s.Statedesc = "error"
 	default:
-		log.Fatalf("Unknown state")
+		err = fmt.Errorf("Unknown state ")
 		s.Statedesc = "error"
 	}
-	return s.Xact
+	return s.Xact, err
 }
 
 var (
@@ -185,7 +187,7 @@ func (t *txtLineTyp) evaluateLine() (string, bool) {
 // ParseXact read a queryFile line by line and load all transaction in a data map.
 // It returns the number of transactions processed.
 // Note : it can handle very long lines which used to be longer than buffer.
-func ParseXact(data map[int][]string, queryFile *string, s *State, debug *bool) int {
+func ParseXact(data map[int][]string, queryFile *string, s *State, debug *bool) (int, error) {
 
 	var txtLine txtLineTyp
 	var prevState string
@@ -193,7 +195,7 @@ func ParseXact(data map[int][]string, queryFile *string, s *State, debug *bool) 
 
 	file, err := os.Open(*queryFile)
 	if err != nil {
-		log.Fatalf("failed opening file: %s", err)
+		return 0, err
 	}
 
 	reader := bufio.NewReader(file)
@@ -212,7 +214,10 @@ func ParseXact(data map[int][]string, queryFile *string, s *State, debug *bool) 
 			}
 			stmtype, isvalid := txtLine.evaluateLine()
 			if isvalid {
-				xact = s.newState(stmtype)
+				xact, err = s.newState(stmtype)
+				if err != nil {
+					return xact, err
+				}
 
 				// concatenate line when we have multi line query
 				if prevState == "multi line query" {
@@ -231,6 +236,6 @@ func ParseXact(data map[int][]string, queryFile *string, s *State, debug *bool) 
 	}
 
 	file.Close()
-	return xact
+	return xact, err
 
 }

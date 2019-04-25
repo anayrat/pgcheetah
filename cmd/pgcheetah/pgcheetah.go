@@ -23,7 +23,6 @@ var worker pgcheetah.Worker
 
 // Command line arguments
 var clients = flag.Int("clients", 100, "number of client")
-var configFile = flag.String("configfile", "", "configfile")
 var connStr = flag.String("constr", "user=postgres dbname=postgres", "pg connstring")
 var debug = flag.Bool("debug", false, "debug mode")
 var delaystart = flag.Int("delaystart", 0, "spread client start among seconds")
@@ -106,7 +105,11 @@ func main() {
 	wg.Add(*clients)
 
 	log.Println("Start parsing")
-	xact := pgcheetah.ParseXact(data, queryfile, &s, debug)
+	xact, err := pgcheetah.ParseXact(data, queryfile, &s, debug)
+
+	if err != nil {
+		log.Fatalf("Error during parsing %s", err)
+	}
 
 	log.Println("Parsing done, start workers. Transactions processed:", xact)
 
