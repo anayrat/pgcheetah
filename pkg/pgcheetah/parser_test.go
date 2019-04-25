@@ -7,9 +7,9 @@ var queryfile = flag.String("queryfile", "", "file containing queries to play")
 
 func TestNewstate(t *testing.T) {
 	var tests = []struct {
-		state_in  State
-		action    string
-		state_exp State
+		stateIn  State
+		action   string
+		stateExp State
 	}{
 
 		{State{"init", 0, false}, "Begin", State{"new Xact", 1, true}},
@@ -55,12 +55,12 @@ func TestNewstate(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		_, err := test.state_in.newState(test.action)
+		_, err := test.stateIn.newState(test.action)
 		if err != nil {
 			t.Error("Error during parsing ", err)
 		}
-		if test.state_exp != test.state_in {
-			t.Error("Test TestNewstate #", i, "Expected state ", test.state_exp, " got ", test.state_in)
+		if test.stateExp != test.stateIn {
+			t.Error("Test TestNewstate #", i, "Expected state ", test.stateExp, " got ", test.stateIn)
 		}
 
 	}
