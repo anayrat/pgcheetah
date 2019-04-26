@@ -71,7 +71,10 @@ func WorkerPG(w Worker) {
 			atomic.AddInt64(w.XactCount, 1)
 		}
 	}()
-	db.Close()
+	err = db.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
 	w.Wg.Done()
 
 }
@@ -81,7 +84,8 @@ func WorkerPG(w Worker) {
 func WaitEventCollector(we map[string]int, connStr *string) {
 
 	var count int
-	var waitEvent string
+	var waitEvent, pgVersion string
+	var waitEventQuery = make(map[string]string, 3)
 	cfg, _ := pgx.ParseConnectionString(*connStr)
 	// use simple protocol in order to work with pgbouncer
 	cfg.PreferSimpleProtocol = true
@@ -91,9 +95,12 @@ func WaitEventCollector(we map[string]int, connStr *string) {
 		log.Fatal(err, " Connection params : ", string(*connStr))
 	}
 	defer db.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Wait event query for postgres 9.6
-	query := `SELECT
+	waitEventQuery["90600"] = `SELECT
 				  wait_event_type || '-' || wait_event as wait_event,
 				  count(*) as count
 				FROM
@@ -104,9 +111,42 @@ func WaitEventCollector(we map[string]int, connStr *string) {
 				  wait_event_type,
 				  wait_event;
 `
+	// Wait event query for postgres 10
+	waitEventQuery["100000"] = `SELECT
+				  wait_event_type || '-' || wait_event as wait_event,
+				  count(*) as count
+				FROM
+				  pg_stat_activity
+				WHERE
+				   wait_event IS NOT NULL
+				   AND
+				   backend_type = 'client backend'
+				GROUP BY
+				  wait_event_type,
+				  wait_event;
+`
+	// Wait event query for postgres 11
+	waitEventQuery["110000"] = `SELECT
+				  wait_event_type || '-' || wait_event as wait_event,
+				  count(*) as count
+				FROM
+				  pg_stat_activity
+				WHERE
+				   wait_event IS NOT NULL
+				   AND
+				   backend_type = 'client backend'
+				GROUP BY
+				  wait_event_type,
+				  wait_event;
+`
+
+	err = db.QueryRow("SELECT (100*(setting::int/100))::text FROM pg_catalog.pg_settings WHERE name IN ('server_version_num') ORDER BY name = 'server_version_num';").Scan(&pgVersion)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	for {
-		row, err := db.Query(query)
+		row, err := db.Query(waitEventQuery[pgVersion])
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -30,13 +30,14 @@ var connStr = flag.String("constr", "user=postgres dbname=postgres", "pg connstr
 var debug = flag.Bool("debug", false, "debug mode")
 var delaystart = flag.Int("delaystart", 0, "spread client start among seconds")
 var delayxact = flag.Float64("delayxact", 5, "millisecond between each transaction")
-var duration = flag.Int("duration", 0, "Test duration")
-var interval = flag.Int("interval", 1, "Interval stats report")
-var queryfile = flag.String("queryfile", "", "file containing queries to play")
+var duration = flag.Int("duration", 0, "Test duration in seconds")
+var interval = flag.Int("interval", 1, "Interval stats report each seconds")
+var queryfile = flag.String("queryfile", "", "Path to file containing queries to play")
+var slowStartFactor = flag.Float64("slowstartfactor", 1.6, "Factor to control how fast the delay between transaction will be changed")
 var thinktimemax = flag.Int("thinktimemax", 5, "millisecond thinktime")
 var thinktimemin = flag.Int("thinktimemin", 5, "millisecond thinktime")
-var tps = flag.Float64("tps", 0, "expected tps")
-var netpprof = flag.Bool("netpprof", false, "enable internal pprof web server")
+var tps = flag.Float64("tps", 0, "Expected tps")
+var netpprof = flag.Bool("netpprof", false, "Enable internal pprof web server")
 
 // Global counters
 var (
@@ -149,8 +150,6 @@ func main() {
 // Naive tps limiting/throttle
 func rateLimiter() {
 
-	// Start rate limiter after workers. Keep it simple without
-	// synchronisation.
 	time.Sleep(time.Duration(*delaystart+1) * time.Second)
 	var prevXactCount int64
 	var prevQueriesCount int64
@@ -183,17 +182,17 @@ func rateLimiter() {
 				// step is calculated in order to, the more we have a difference between wanted tps and current tps
 				// bigger the step is. Inversely, the more we are close to desirated tps, smaller is the step.
 				// The empirical formula is:
-				// step = 10 * deltatps ^ 1.6 + 20 * deltatps
+				// step = 10 * deltatps ^ slowStartFactor + 10 * slowStartFactor * deltatps
 				// where delta tps is a ratio between wanted tps and current tps.
 
-				step = int(10*math.Pow(curtps / *tps, 1.6) + 30*curtps / *tps)
+				step = int(10*math.Pow(curtps / *tps, *slowStartFactor) + *slowStartFactor*10*curtps / *tps)
 				//log.Printf("> TPS: %d	- tps diff %d	Delay: %d => %d\n", (xactCount-prevXactCount)*10, int64(*tps*(1+0.1)), delayXactUs, delayXactUs+step)
 
 			} else if int64(curtps) < int64(*tps*(1-0.01)) {
 
 				// We keep the min between calculated step and current delayXactUs to avoid negative delayXactUs
-				step = -int(math.Min(10*math.Pow(*tps/curtps, 1.6)+30**tps/curtps, float64(delayXactUs)))
-				//log.Printf("< TPS: %d	- tps diff %d	Delay: %d => %d\n", (xactCount-prevXactCount)*10, int64(*tps*(1-0.1)), delayXactUs, delayXactUs-step)
+				step = -int(math.Min(10*math.Pow(*tps/curtps, *slowStartFactor)+*slowStartFactor*10**tps/curtps, float64(delayXactUs)))
+				//log.Printf("< TPS: %d	- tps diff %d	Delay: %d => %d\n", (xactCount-prevXactCount)*10, int64(*tps*(1-0.1)), delayXactUs, delayXactUs+step)
 			}
 			delayXactUs += step
 		}

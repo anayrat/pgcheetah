@@ -235,7 +235,7 @@ func ParseXact(data map[int][]string, queryFile *string, s *State, debug *bool) 
 		}
 	}
 
-	file.Close()
+	err = file.Close()
 	return xact, err
 
 }
