@@ -10,22 +10,16 @@ import (
 )
 
 // The Worker type contains all informations needed to start a WorkerPG.
-// Earch Worker has access to several shared structures through pointers:
-// - The Dataset containing all transactions
-// - DelayXactUs to limit global throughput
-// - Two global counters for transactions and queries, XactCount and
-// QueriesCount respectively
-// - A Done channel used to stop worker
-// - A WaitGroup to wait all workers ended
+// Earch Worker has access to several shared structures through pointers.
 type Worker struct {
-	ConnStr      *string
-	Dataset      map[int][]string
-	DelayXactUs  *int
-	Done         chan bool
-	QueriesCount *int64
-	Think        *ThinkTime
+	ConnStr      *string          // URI or a DSN connection string
+	Dataset      map[int][]string // Dataset containing all transactions
+	DelayXactUs  *int             // Delay to limit global throughput
+	Done         chan bool        // Used to stop workers
+	QueriesCount *int64           // Global counter for queries
+	Think        *ThinkTime       // Used to add random delay between each query
 	Wg           *sync.WaitGroup
-	XactCount    *int64
+	XactCount    *int64 // Global counter for transactions
 }
 
 // WorkerPG execute all queries from a randomly

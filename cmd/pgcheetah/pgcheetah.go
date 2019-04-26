@@ -18,8 +18,11 @@ import (
 // Preallocate 100k transactions
 var data = make(map[int][]string, 100000)
 
+var delayXactUs int
+var start time.Time
 var wg sync.WaitGroup
 var worker pgcheetah.Worker
+var done chan bool
 
 // Command line arguments
 var clients = flag.Int("clients", 100, "number of client")
@@ -45,12 +48,10 @@ func main() {
 
 	data[0] = []string{""}
 	waitEvent := make(map[string]int)
-	done := make(chan bool)
+	done = make(chan bool)
 	var timer *time.Timer
 	think := pgcheetah.ThinkTime{Distribution: "uniform", Min: 0, Max: 5}
 	s := pgcheetah.State{Statedesc: "init", Xact: 0, XactInProgress: false}
-	var start time.Time
-	var delayXactUs int
 
 	flag.Parse()
 	if *queryfile == "" {
@@ -106,81 +107,12 @@ func main() {
 
 	log.Println("Start parsing")
 	xact, err := pgcheetah.ParseXact(data, queryfile, &s, debug)
-
 	if err != nil {
 		log.Fatalf("Error during parsing %s", err)
 	}
-
 	log.Println("Parsing done, start workers. Transactions processed:", xact)
 
-	// Naive tps limiting/throttle
-	go func() {
-		time.Sleep(time.Duration(*delaystart) * time.Second)
-		var prevXactCount int64
-		var prevQueriesCount int64
-		var curtps float64
-		step := 10
-		wg.Add(1)
-		time.Sleep(time.Duration(1) * time.Second)
-
-		// Loop every 100ms to calculate throttle to reach wanted tps
-		for i := 0; true; i++ {
-
-			curtps = float64(xactCount-prevXactCount) * 10
-
-			// Reports stats for each inverval
-			if i%(*interval*10) == 0 {
-				if *duration == 0 {
-					log.Printf("TPS: %.f QPS: %d Xact: %d Queries: %d Delay: %s Test duration: %.fs\n",
-						curtps, (queriesCount-prevQueriesCount)*10, xactCount, queriesCount,
-						time.Duration(delayXactUs)*time.Microsecond, time.Since(start).Seconds())
-				} else {
-					log.Printf("TPS: %.f QPS: %d Xact: %d Queries: %d Delay: %s Remaining: %.fs\n",
-						curtps, (queriesCount-prevQueriesCount)*10, xactCount, queriesCount,
-						time.Duration(delayXactUs)*time.Microsecond, float64(*duration)-time.Since(start).Seconds())
-				}
-			}
-			if *tps != 0 {
-
-				// We change the step if we are above +/- 1% of wanted tps
-				if int64(curtps) > int64(*tps*(1+0.01)) {
-
-					// step is calculated in order to, the more we have a difference between wanted tps and current tps
-					// bigger the step is. Inversely, the more we are close to desirated tps, smaller is the step.
-					// The empirical formula is:
-					// step = 10 * deltatps ^ 1.6 + 20 * deltatps
-					// where delta tps is a ratio between wanted tps and current tps.
-
-					step = int(10*math.Pow(curtps / *tps, 1.6) + 30*curtps / *tps)
-					//log.Printf("> TPS: %d	- tps diff %d	Delay: %d => %d\n", (xactCount-prevXactCount)*10, int64(*tps*(1+0.1)), delayXactUs, delayXactUs+step)
-
-				} else if int64(curtps) < int64(*tps*(1-0.01)) {
-
-					// We keep the min between calculated step and current delayXactUs to avoid negative delayXactUs
-					step = -int(math.Min(10*math.Pow(*tps/curtps, 1.6)+30**tps/curtps, float64(delayXactUs)))
-					//log.Printf("< TPS: %d	- tps diff %d	Delay: %d => %d\n", (xactCount-prevXactCount)*10, int64(*tps*(1-0.1)), delayXactUs, delayXactUs-step)
-				}
-				delayXactUs += step
-			}
-			prevXactCount = xactCount
-			prevQueriesCount = queriesCount
-			time.Sleep(100 * time.Millisecond)
-			select {
-			case <-done:
-
-				t := time.Now()
-				elapsed := t.Sub(start)
-				log.Printf("End test - Clients: %d - Elapsed: %s - Average TPS: %.f - Average QPS: %.f\n",
-					*clients, elapsed.String(), float64(xactCount)/elapsed.Seconds(), float64(queriesCount)/elapsed.Seconds())
-				wg.Done()
-				return
-			default:
-
-			}
-
-		}
-
-	}()
+	go rateLimiter()
 
 	worker.ConnStr = connStr
 	worker.Dataset = data
@@ -211,5 +143,76 @@ func main() {
 	go pgcheetah.WaitEventCollector(waitEvent, connStr)
 
 	wg.Wait()
+
+}
+
+// Naive tps limiting/throttle
+func rateLimiter() {
+
+	// Start rate limiter after workers. Keep it simple without
+	// synchronisation.
+	time.Sleep(time.Duration(*delaystart+1) * time.Second)
+	var prevXactCount int64
+	var prevQueriesCount int64
+	var curtps float64
+	step := 10 // 10µs by default
+	wg.Add(1)
+
+	// Loop every 100ms to calculate throttle to reach wanted tps
+	for i := 0; true; i++ {
+
+		curtps = float64(xactCount-prevXactCount) * 10
+
+		// Reports stats for each inverval
+		if i%(*interval*10) == 0 {
+			if *duration == 0 {
+				log.Printf("TPS: %.f QPS: %d Xact: %d Queries: %d Delay: %s Test duration: %.fs\n",
+					curtps, (queriesCount-prevQueriesCount)*10, xactCount, queriesCount,
+					time.Duration(delayXactUs)*time.Microsecond, time.Since(start).Seconds())
+			} else {
+				log.Printf("TPS: %.f QPS: %d Xact: %d Queries: %d Delay: %s Remaining: %.fs\n",
+					curtps, (queriesCount-prevQueriesCount)*10, xactCount, queriesCount,
+					time.Duration(delayXactUs)*time.Microsecond, float64(*duration)-time.Since(start).Seconds())
+			}
+		}
+		if *tps != 0 {
+
+			// We change the step if we are above +/- 1% of wanted tps
+			if int64(curtps) > int64(*tps*(1+0.01)) {
+
+				// step is calculated in order to, the more we have a difference between wanted tps and current tps
+				// bigger the step is. Inversely, the more we are close to desirated tps, smaller is the step.
+				// The empirical formula is:
+				// step = 10 * deltatps ^ 1.6 + 20 * deltatps
+				// where delta tps is a ratio between wanted tps and current tps.
+
+				step = int(10*math.Pow(curtps / *tps, 1.6) + 30*curtps / *tps)
+				//log.Printf("> TPS: %d	- tps diff %d	Delay: %d => %d\n", (xactCount-prevXactCount)*10, int64(*tps*(1+0.1)), delayXactUs, delayXactUs+step)
+
+			} else if int64(curtps) < int64(*tps*(1-0.01)) {
+
+				// We keep the min between calculated step and current delayXactUs to avoid negative delayXactUs
+				step = -int(math.Min(10*math.Pow(*tps/curtps, 1.6)+30**tps/curtps, float64(delayXactUs)))
+				//log.Printf("< TPS: %d	- tps diff %d	Delay: %d => %d\n", (xactCount-prevXactCount)*10, int64(*tps*(1-0.1)), delayXactUs, delayXactUs-step)
+			}
+			delayXactUs += step
+		}
+		prevXactCount = xactCount
+		prevQueriesCount = queriesCount
+		time.Sleep(100 * time.Millisecond)
+		select {
+		case <-done:
+
+			t := time.Now()
+			elapsed := t.Sub(start)
+			log.Printf("End test - Clients: %d - Elapsed: %s - Average TPS: %.f - Average QPS: %.f\n",
+				*clients, elapsed.String(), float64(xactCount)/elapsed.Seconds(), float64(queriesCount)/elapsed.Seconds())
+			wg.Done()
+			return
+		default:
+
+		}
+
+	}
 
 }
