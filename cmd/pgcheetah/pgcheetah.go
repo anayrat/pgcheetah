@@ -27,17 +27,19 @@ var done chan bool
 // Command line arguments
 var clients = flag.Int("clients", 100, "number of client")
 var connStr = flag.String("constr", "user=postgres dbname=postgres", "pg connstring")
+var datasetFraction = flag.Float64("datasetfraction", 1.0, "Fraction of dataset to use between 0 - 1")
 var debug = flag.Bool("debug", false, "debug mode")
-var delaystart = flag.Int("delaystart", 0, "spread client start among seconds")
-var delayxact = flag.Float64("delayxact", 5, "millisecond between each transaction")
+var delayStart = flag.Int("delaystart", 0, "spread client start among seconds")
+var delayXact = flag.Float64("delayxact", 5, "millisecond between each transaction")
 var duration = flag.Int("duration", 0, "Test duration in seconds")
 var interval = flag.Int("interval", 1, "Interval stats report each seconds")
-var queryfile = flag.String("queryfile", "", "Path to file containing queries to play")
+var queryFile = flag.String("queryfile", "", "Path to file containing queries to play")
 var slowStartFactor = flag.Float64("slowstartfactor", 1.6, "Factor to control how fast the delay between transaction will be changed")
-var thinktimemax = flag.Int("thinktimemax", 5, "millisecond thinktime")
-var thinktimemin = flag.Int("thinktimemin", 5, "millisecond thinktime")
+var thinkTimeMax = flag.Int("thinktimemax", 5, "millisecond thinktime")
+var thinkTimeMin = flag.Int("thinktimemin", 5, "millisecond thinktime")
 var tps = flag.Float64("tps", 0, "Expected tps")
 var netpprof = flag.Bool("netpprof", false, "Enable internal pprof web server")
+var weInterval = flag.Int("weinterval", 500, "Wait Event collection interval in ms")
 
 // Global counters
 var (
@@ -55,7 +57,7 @@ func main() {
 	s := pgcheetah.State{Statedesc: "init", Xact: 0, XactInProgress: false}
 
 	flag.Parse()
-	if *queryfile == "" {
+	if *queryFile == "" {
 		log.Println("Provide queryfile with -queryfile")
 		os.Exit(1)
 	}
@@ -66,11 +68,11 @@ func main() {
 			log.Println(http.ListenAndServe("localhost:6060", nil))
 		}()
 	}
-	think.Min = *thinktimemin
-	think.Max = *thinktimemax
+	think.Min = *thinkTimeMin
+	think.Max = *thinkTimeMax
 
-	// Convert delayxact from ms to µs
-	delayXactUs = int(*delayxact * 1000)
+	// Convert delayXact from ms to µs
+	delayXactUs = int(*delayXact * 1000)
 
 	// Initiate timer, will be reseted later
 	timer = time.NewTimer(time.Duration(*duration) * time.Second)
@@ -107,7 +109,7 @@ func main() {
 	wg.Add(*clients)
 
 	log.Println("Start parsing")
-	xact, err := pgcheetah.ParseXact(data, queryfile, &s, debug)
+	xact, err := pgcheetah.ParseXact(data, queryFile, &s, debug)
 	if err != nil {
 		log.Fatalf("Error during parsing %s", err)
 	}
@@ -117,6 +119,7 @@ func main() {
 
 	worker.ConnStr = connStr
 	worker.Dataset = data
+	worker.DatasetFraction = *datasetFraction
 	worker.DelayXactUs = &delayXactUs
 	worker.Done = done
 	worker.QueriesCount = &queriesCount
@@ -125,7 +128,7 @@ func main() {
 	worker.XactCount = &xactCount
 
 	for i := 0; i < *clients; i++ {
-		time.Sleep(time.Duration(*delaystart*1000 / *clients) * time.Millisecond)
+		time.Sleep(time.Duration(*delayStart*1000 / *clients) * time.Millisecond)
 		go pgcheetah.WorkerPG(worker)
 	}
 	log.Println("All workers launched")
@@ -141,7 +144,7 @@ func main() {
 		timer.Reset(time.Duration(*duration) * time.Second)
 	}
 
-	go pgcheetah.WaitEventCollector(waitEvent, connStr)
+	go pgcheetah.WaitEventCollector(waitEvent, connStr, *weInterval)
 
 	wg.Wait()
 
@@ -150,7 +153,7 @@ func main() {
 // Naive tps limiting/throttle
 func rateLimiter() {
 
-	time.Sleep(time.Duration(*delaystart+1) * time.Second)
+	time.Sleep(time.Duration(*delayStart+1) * time.Second)
 	var prevXactCount int64
 	var prevQueriesCount int64
 	var curtps float64

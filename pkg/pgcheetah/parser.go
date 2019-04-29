@@ -44,7 +44,7 @@ func (s *State) newState(action string) (int, error) {
 			err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			err = fmt.Errorf("unknown action ")
+			err = fmt.Errorf("unknown action %s", action)
 			s.Statedesc = "error"
 		}
 	case "query":
@@ -63,7 +63,7 @@ func (s *State) newState(action string) (int, error) {
 			err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			err = fmt.Errorf("unknown action ")
+			err = fmt.Errorf("unknown action %s", action)
 			s.Statedesc = "error"
 		}
 	case "multi line query":
@@ -83,7 +83,7 @@ func (s *State) newState(action string) (int, error) {
 			err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			err = fmt.Errorf("unknown action ")
+			err = fmt.Errorf("unknown action %s", action)
 			s.Statedesc = "error"
 		}
 	case "new Xact":
@@ -99,7 +99,7 @@ func (s *State) newState(action string) (int, error) {
 			s.Statedesc = "end Xact"
 			s.XactInProgress = false
 		default:
-			err = fmt.Errorf("unknown action ")
+			err = fmt.Errorf("unknown action %s", action)
 			s.Statedesc = "error"
 		}
 	case "Xact in progress":
@@ -115,7 +115,7 @@ func (s *State) newState(action string) (int, error) {
 			s.Statedesc = "end Xact"
 			s.XactInProgress = false
 		default:
-			err = fmt.Errorf("unknown action ")
+			err = fmt.Errorf("unknown action %s", action)
 			s.Statedesc = "error"
 		}
 	case "end Xact":
@@ -133,14 +133,14 @@ func (s *State) newState(action string) (int, error) {
 			err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 			s.Statedesc = "error"
 		default:
-			err = fmt.Errorf("unknown action ")
+			err = fmt.Errorf("unknown action %s", action)
 			s.Statedesc = "error"
 		}
 	case "error":
 		err = fmt.Errorf("action %s bring from state %s to error state ", action, s.Statedesc)
 		s.Statedesc = "error"
 	default:
-		err = fmt.Errorf("Unknown state ")
+		err = fmt.Errorf("Unknown state %s", s.Statedesc)
 		s.Statedesc = "error"
 	}
 	return s.Xact, err

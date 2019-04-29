@@ -25,6 +25,7 @@ func TestWorkerPG(t *testing.T) {
 
 	worker.ConnStr = connStr
 	worker.Dataset = data
+	worker.DatasetFraction = 0.5
 	worker.DelayXactUs = &delayXactUs
 	worker.Done = done
 	worker.QueriesCount = &queriesCount
@@ -34,12 +35,14 @@ func TestWorkerPG(t *testing.T) {
 
 	go WorkerPG(worker)
 
+	worker.DatasetFraction = 1
+	go WorkerPG(worker)
 	time.Sleep(time.Duration(1) * time.Second)
 }
 func TestWaitEventCollector(t *testing.T) {
 
 	waitEvent := make(map[string]int)
-	go WaitEventCollector(waitEvent, connStr)
+	go WaitEventCollector(waitEvent, connStr, 500)
 	time.Sleep(time.Duration(1) * time.Second)
 
 }

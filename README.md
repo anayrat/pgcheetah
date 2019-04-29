@@ -41,6 +41,8 @@ Usage of ./pgcheetah:
     	number of client (default 100)
   * constr:
     	pg connstring (default "user=postgres dbname=postgres")
+  * datasetfraction:
+    Fraction of dataset to use between 0 - 1 (default 1)
   * debug:
     	debug mode
   * delaystart:
@@ -63,6 +65,8 @@ Usage of ./pgcheetah:
     	millisecond thinktime (default 5)
   * tps:
     	expected tps
+  * weinterval:
+        Wait Event collection interval in ms (default 500)
 
 
 ## Example
