@@ -1,7 +1,8 @@
 package pgcheetah
 
 import (
-	"github.com/jackc/pgx"
+	"context"
+	"github.com/jackc/pgx/v4"
 	"log"
 	"math/rand"
 	"sync"
@@ -31,13 +32,13 @@ type Worker struct {
 func WorkerPG(w Worker) {
 
 	var randXact, i int
-	cfg, err := pgx.ParseConnectionString(*w.ConnStr)
+	cfg, err := pgx.ParseConfig(*w.ConnStr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	// Use simple protocol in order to work with pgbouncer
 	cfg.PreferSimpleProtocol = true
-	db, err := pgx.Connect(cfg)
+	db, err := pgx.ConnectConfig(context.Background(), cfg)
 
 	if err != nil {
 		log.Fatal(err, " Connection params : ", string(*w.ConnStr))
@@ -51,7 +52,7 @@ func WorkerPG(w Worker) {
 				randXact = rand.Intn(setSize)
 			}
 			for i = 0; i < len(w.Dataset[randXact]); i++ {
-				_, err = db.Exec(w.Dataset[randXact][i])
+				_, err = db.Exec(context.Background(), w.Dataset[randXact][i])
 
 				// Ignore SQL error
 				//if err != nil {
@@ -76,7 +77,7 @@ func WorkerPG(w Worker) {
 			atomic.AddInt64(w.XactCount, 1)
 		}
 	}()
-	err = db.Close()
+	err = db.Close(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -91,15 +92,15 @@ func WaitEventCollector(we map[string]int, connStr *string, weInterval int) {
 	var count int
 	var waitEvent, pgVersion string
 	var waitEventQuery = make(map[string]string, 3)
-	cfg, _ := pgx.ParseConnectionString(*connStr)
+	cfg, _ := pgx.ParseConfig(*connStr)
 	// use simple protocol in order to work with pgbouncer
 	cfg.PreferSimpleProtocol = true
-	db, err := pgx.Connect(cfg)
+	db, err := pgx.ConnectConfig(context.Background(), cfg)
 
 	if err != nil {
 		log.Fatal(err, " Connection params : ", string(*connStr))
 	}
-	defer db.Close()
+	defer db.Close(context.Background())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -145,13 +146,13 @@ func WaitEventCollector(we map[string]int, connStr *string, weInterval int) {
 				  wait_event;
 `
 
-	err = db.QueryRow("SELECT (100*(setting::int/100))::text FROM pg_catalog.pg_settings WHERE name IN ('server_version_num') ORDER BY name = 'server_version_num';").Scan(&pgVersion)
+	err = db.QueryRow(context.Background(), "SELECT (100*(setting::int/100))::text FROM pg_catalog.pg_settings WHERE name IN ('server_version_num') ORDER BY name = 'server_version_num';").Scan(&pgVersion)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for {
-		row, err := db.Query(waitEventQuery[pgVersion])
+		row, err := db.Query(context.Background(), waitEventQuery[pgVersion])
 		if err != nil {
 			log.Fatal(err)
 		}

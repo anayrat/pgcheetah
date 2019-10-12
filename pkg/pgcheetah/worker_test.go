@@ -18,7 +18,7 @@ var (
 
 func TestWorkerPG(t *testing.T) {
 	think := ThinkTime{Distribution: "uniform", Min: 0, Max: 5}
-	data[0] = []string{"SELECT1;"}
+	data[0] = []string{"SELECT 1;"}
 	done := make(chan bool)
 	var worker Worker
 	delayXactUs := 100
